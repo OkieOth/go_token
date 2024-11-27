@@ -1,0 +1,18 @@
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: secretpassword
+      DB_VENDOR: h2
+    command:
+      - start-dev
+      - --import-realm
+    volumes:
+      - ./keycloak/import.json:/opt/keycloak/data/import/import.json
+    ports:
+      - "8080:8080"
+
+volumes:
+  keycloak_data:
+    driver: local

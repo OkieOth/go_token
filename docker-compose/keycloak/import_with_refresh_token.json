@@ -1,0 +1,39 @@
+{
+    "realm": "test-realm",
+    "enabled": true,
+    "clients": [
+      {
+        "clientId": "test-client",
+        "enabled": true,
+        "clientAuthenticatorType": "client-secret",
+        "secret": "test-client999",
+        "redirectUris": ["*"],
+        "serviceAccountsEnabled": true,
+        "standardFlowEnabled": true,
+        "directAccessGrantsEnabled": true,
+        "publicClient": false,
+        "bearerOnly": false,
+        "protocol": "openid-connect",
+        "attributes": {
+            "access.token.lifespan": "300",
+            "client.credentials.use.refresh.tokens": "true",
+            "client.secret.creation.time": "2024-01-01T00:00:00Z",
+            "client.introspection.response.allow.jwt.claim.enabled": "false",
+            "post.logout.redirect.uris": "+",
+            "oauth2.device.authorization.grant.enabled": "false",
+            "backchannel.logout.revoke.offline.tokens": "false",
+            "use.refresh.tokens": "true",
+            "oidc.ciba.grant.enabled": "false",
+            "client.use.lightweight.access.token.enabled": "false",
+            "backchannel.logout.session.required": "true",
+            "client_credentials.use_refresh_token": "true",
+            "tls.client.certificate.bound.access.tokens": "false",
+            "require.pushed.authorization.requests": "false",
+            "acr.loa.map": "{}",
+            "display.on.consent.screen": "false",
+            "refresh.token.lifespan": "1800",
+            "token.response.type.bearer.lower-case": "false"
+        }
+      }
+    ]
+  }

@@ -1,0 +1,17 @@
+{
+    "realm": "test-realm",
+    "enabled": true,
+    "clients": [
+      {
+        "clientId": "test-client",
+        "enabled": true,
+        "clientAuthenticatorType": "client-secret",
+        "secret": "test-client999",
+        "redirectUris": ["*"],
+        "serviceAccountsEnabled": true,
+        "attributes": {
+          "access.token.lifespan": "23"
+        }
+      }
+    ]
+  }
