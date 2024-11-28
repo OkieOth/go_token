@@ -10,13 +10,19 @@ import (
 
 type TokenContent struct {
 	Token            string
-	ExirationSeconds int64
+	ExirationSeconds uint64
 	LastUpdated      goptional.Optional[time.Time]
 	LastChecked      goptional.Optional[time.Time]
 }
 
+type TokenReceiverPayload struct {
+	TokenStr          string
+	ExpirationSeconds uint64
+	Error             goptional.Optional[string]
+}
+
 type TokenReceiver interface {
-	Get(url string, client string, password string, tokenReceiverChannel <-chan string)
+	Get(url string, client string, password string, tokenReceiverChannel chan<- TokenReceiverPayload)
 }
 
 type Token struct {
@@ -35,6 +41,14 @@ func (t *Token) Get() (string, error) {
 	} else {
 		return "", errors.New("Token not initialized")
 	}
+}
+
+func (t *Token) InitContent(payload TokenReceiverPayload) {
+	var content TokenContent
+	content.ExirationSeconds = payload.ExpirationSeconds
+	content.Token = payload.TokenStr
+	// TODO - initialize Token object
+	// start go routine to refresh the token
 }
 
 func NewTokenBuilder() TokenBuilder {
@@ -100,13 +114,14 @@ func (b *TokenBuilder) Build() (Token, error) {
 	}
 	if v, isSet := b.tokenReceiver.Get(); isSet {
 		ret.TokenReceiver = v
-		tokenReceiverChannel := make(chan string)
-		ret.TokenReceiver.Get(ret.Url, ret.Client, ret.Password, tokenReceiverChannel)
-		for t := range tokenReceiverChannel {
-			var tc TokenContent
-			tc.Token = t
-			ret.Content.Set(tc)
-			// Start token refresh goroutine
+		tokenReceiverChan := make(chan TokenReceiverPayload)
+		ret.TokenReceiver.Get(ret.Url, ret.Client, ret.Password, tokenReceiverChan)
+		timeout := 10 * time.Second
+		select {
+		case payload := <-tokenReceiverChan:
+			ret.InitContent(payload)
+		case <-time.After(timeout):
+			return ret, errors.New("Timeout while receiving the first token")
 		}
 	} else {
 		return ret, errors.New("token receiver isn't set")
