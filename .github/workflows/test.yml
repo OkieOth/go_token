@@ -9,9 +9,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Go 1.21.x
+      - name: Setup Go 1.23.x
         uses: actions/setup-go@v4
         with:
           go-version: '1.23.x'
       - name: Test with the Go CLI
-        run: go test -v ./...
+        run: go test -v --skip "_IT" ./...
+  test_on_pr:
+    runs-on: ubuntu-latest
+    name: integration-test
+    steps:
+      # need checkout before using compose-action
+      - uses: actions/checkout@v3
+      - uses: isbang/compose-action@v1.5.1
+        with:
+          compose-file: "docker/test_env.yaml"
+          up-flags: "--build --abort-on-container-exit --exit-code-from test_runner"
