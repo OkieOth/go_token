@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 
 	"github.com/okieoth/goptional"
 )
@@ -12,14 +13,14 @@ import (
 type HttpTokenReceiver struct {
 }
 
-func (r *HttpTokenReceiver) Get(url string, client string, password string, tokenReceiverChannel chan<- TokenReceiverPayload) {
+func (r *HttpTokenReceiver) Get(urlStr string, client string, password string, tokenReceiverChannel chan<- TokenReceiverPayload) {
 	data := make(url.Values)
 
 	data.Set("client_id", client)
 	data.Set("grant_type", "client_credentials")
 	data.Set("client_secret", password)
 
-	req, err := http.NewRequest("POST", url, bytes.NewBufferString(data.Encode()))
+	req, err := http.NewRequest("POST", urlStr, bytes.NewBufferString(data.Encode()))
 	if err != nil {
 		e := goptional.NewOptionalValue[string]("Failed to create HTTP request: " + err.Error())
 		tokenReceiverChannel <- TokenReceiverPayload{
