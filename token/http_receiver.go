@@ -6,26 +6,44 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-
-	"github.com/okieoth/goptional"
 )
 
 type HttpTokenReceiver struct {
+	https bool
 }
 
-func (r *HttpTokenReceiver) Get(urlStr string, client string, password string, tokenReceiverChannel chan<- TokenReceiverPayload) {
+func NewHttpTokenReceiver() HttpTokenReceiver {
+	return HttpTokenReceiver{
+		https: false,
+	}
+}
+
+func NewHttpsTokenReceiver() HttpTokenReceiver {
+	return HttpTokenReceiver{
+		https: true,
+	}
+}
+
+func (r *HttpTokenReceiver) BuildConnectionString(server string, port uint, realm string, client string) (string, error) {
+	var protocolStr string
+	if r.https {
+		protocolStr = "https"
+	} else {
+		protocolStr = "http"
+	}
+	return fmt.Sprintf("%s://%s:%d/realms/%s/protocol/openid-connect/token", protocolStr, server, port, realm), nil
+}
+
+func (r *HttpTokenReceiver) Get(connectionStr string, client string, password string, tokenReceiverChannel chan<- TokenReceiverPayload) {
 	data := make(url.Values)
 
 	data.Set("client_id", client)
 	data.Set("grant_type", "client_credentials")
 	data.Set("client_secret", password)
 
-	req, err := http.NewRequest("POST", urlStr, bytes.NewBufferString(data.Encode()))
+	req, err := http.NewRequest("POST", connectionStr, bytes.NewBufferString(data.Encode()))
 	if err != nil {
-		e := goptional.NewOptionalValue[string]("Failed to create HTTP request: " + err.Error())
-		tokenReceiverChannel <- TokenReceiverPayload{
-			Error: e,
-		}
+		tokenReceiverChannel <- TokenReceiverPayloadError("Failed to create HTTP request: " + err.Error())
 		return
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -34,28 +52,19 @@ func (r *HttpTokenReceiver) Get(urlStr string, client string, password string, t
 	resp, err := clientHTTP.Do(req)
 
 	if err != nil {
-		e := goptional.NewOptionalValue[string]("HTTP request failed: " + err.Error())
-		tokenReceiverChannel <- TokenReceiverPayload{
-			Error: e,
-		}
+		tokenReceiverChannel <- TokenReceiverPayloadError("HTTP request failed: " + err.Error())
 		return
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		e := goptional.NewOptionalValue[string]("Error while reading HTTP response: " + err.Error())
-		tokenReceiverChannel <- TokenReceiverPayload{
-			Error: e,
-		}
+		tokenReceiverChannel <- TokenReceiverPayloadError("Error while reading HTTP response: " + err.Error())
 		return
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		e := goptional.NewOptionalValue[string](fmt.Sprintf("HTTP request failed with status: %s", resp.Status))
-		tokenReceiverChannel <- TokenReceiverPayload{
-			Error: e,
-		}
+		tokenReceiverChannel <- TokenReceiverPayloadError("HTTP request failed with status: " + resp.Status)
 		return
 	}
 
@@ -63,10 +72,6 @@ func (r *HttpTokenReceiver) Get(urlStr string, client string, password string, t
 		// Send result to channel
 		tokenReceiverChannel <- payload
 	} else {
-		var e goptional.Optional[string]
-		e.Set(err.Error())
-		tokenReceiverChannel <- TokenReceiverPayload{
-			Error: e,
-		}
+		tokenReceiverChannel <- TokenReceiverPayloadError(err.Error())
 	}
 }

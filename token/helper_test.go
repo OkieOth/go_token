@@ -13,7 +13,7 @@ func Test_stringToTokenReceiverPayload(t *testing.T) {
 		return
 	}
 
-	if payload.Error.IsSet() {
+	if payload.HasError {
 		t.Errorf("Error in payload is set: %v", payload)
 		return
 	}

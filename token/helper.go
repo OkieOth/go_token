@@ -17,6 +17,6 @@ func stringToTokenReceiverPayload(body []byte) (TokenReceiverPayload, error) {
 		ret.TokenStr = tr.AccessToken
 		return ret, nil
 	} else {
-		return ret, fmt.Errorf("Error while unmarshal received token response: %v\nbody: %v", err, body)
+		return ret, fmt.Errorf("error while unmarshal received token response: %v\nbody: %s", err, string(body))
 	}
 }

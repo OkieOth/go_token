@@ -39,7 +39,7 @@ func TestGetOk_IT(t *testing.T) {
 		go receiver.Get(urlStr, testCase.client, testCase.password, resultChan)
 		select {
 		case payload := <-resultChan:
-			if payload.Error.IsSet() != testCase.isError {
+			if payload.HasError != testCase.isError {
 				t.Error("Error is set")
 			}
 			if (!testCase.isError) && (payload.TokenStr == "") {
