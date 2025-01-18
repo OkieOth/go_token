@@ -46,17 +46,122 @@ type TokenReceiver interface {
 	Get(connectionString string, client string, password string, tokenReceiverChannel chan<- TokenReceiverPayload)
 }
 
+type TokenOpts struct {
+	server        string
+	port          uint
+	client        string
+	password      string
+	realm         string
+	tokenReceiver *TokenReceiver
+}
+
+type TokenOptsFunc func(*TokenOpts)
+
+func defaultTokenOpts() TokenOpts {
+	return TokenOpts{
+		server: "localhost",
+		port:   8080,
+	}
+}
+
+func Server(server string) TokenOptsFunc {
+	return func(opts *TokenOpts) {
+		opts.server = server
+	}
+}
+
+func Port(port uint) TokenOptsFunc {
+	return func(opts *TokenOpts) {
+		opts.port = port
+	}
+}
+
+func Client(client string) TokenOptsFunc {
+	return func(opts *TokenOpts) {
+		opts.client = client
+	}
+}
+
+func Password(pwd string) TokenOptsFunc {
+	return func(opts *TokenOpts) {
+		opts.password = pwd
+	}
+}
+
+func Realm(realm string) TokenOptsFunc {
+	return func(opts *TokenOpts) {
+		opts.realm = realm
+	}
+}
+
+func Receiver(receiver TokenReceiver) TokenOptsFunc {
+	return func(opts *TokenOpts) {
+		opts.tokenReceiver = &receiver
+	}
+}
+
 type Token struct {
-	Server   string
-	Port     uint
-	Client   string
-	Password string
-	Realm    string
+	TokenOpts
 
 	connectionStr string
-
 	Content       *TokenContent
-	TokenReceiver TokenReceiver
+}
+
+func NewToken(opts ...TokenOptsFunc) (*Token, error) {
+	o := defaultTokenOpts()
+	for _, fn := range opts {
+		fn(&o)
+	}
+	ret := Token{
+		connectionStr: "",
+		Content:       nil,
+		TokenOpts:     o,
+	}
+	errorMsg := ""
+	if ret.client == "" {
+		errorMsg += "no client config given,"
+	}
+	if ret.password == "" {
+		errorMsg += " no password given,"
+	}
+	if ret.realm == "" {
+		errorMsg += " no realm given,"
+	}
+	if ret.tokenReceiver == nil {
+		errorMsg += " tokenReceiver not initialized"
+	}
+	if errorMsg != "" {
+		return nil, fmt.Errorf("Missing items for creating a token: %s", errorMsg)
+	} else {
+		if err := ret.initializeToken(); err != nil {
+			return nil, fmt.Errorf("error while initialize: %v", err)
+		} else {
+			return &ret, nil
+		}
+	}
+}
+
+func (t *Token) initializeToken() error {
+	tokenReceiverChan := make(chan TokenReceiverPayload)
+	connectionString, err := (*t.tokenReceiver).BuildConnectionString(t.server, t.port, t.realm, t.client)
+	if err != nil {
+		return fmt.Errorf("error while building connection string: %v", err)
+	}
+	t.connectionStr = connectionString
+	go (*t.tokenReceiver).Get(connectionString, t.client, t.password, tokenReceiverChan)
+	timeout := 10 * time.Second
+	select {
+	case payload := <-tokenReceiverChan:
+		if payload.HasError {
+			return errors.New(payload.Error)
+		} else {
+			t.InitContent(payload)
+			go refreshToken(t)
+		}
+	case <-time.After(timeout):
+		return errors.New("timeout while receiving the first token")
+	}
+	return nil
 }
 
 func (t *Token) Get() (string, error) {
@@ -82,7 +187,7 @@ func refreshToken(t *Token) {
 			}
 		}
 		tokenReceiverChan := make(chan TokenReceiverPayload)
-		go t.TokenReceiver.Get(t.connectionStr, t.Client, t.Password, tokenReceiverChan)
+		go (*t.tokenReceiver).Get(t.connectionStr, t.client, t.password, tokenReceiverChan)
 		timeout := 10 * time.Second
 		select {
 		case payload := <-tokenReceiverChan:
@@ -114,104 +219,4 @@ func (t *Token) InitContent(payload TokenReceiverPayload) {
 	content.ExirationSeconds = payload.ExpirationSeconds
 	content.SetToken(payload.TokenStr)
 	t.Content = &content
-}
-
-func NewTokenBuilder() *TokenBuilder {
-	var ret TokenBuilder
-	return &ret
-}
-
-type TokenBuilder struct {
-	server   *string
-	port     *uint
-	client   *string
-	password *string
-	realm    *string
-
-	tokenReceiver *TokenReceiver
-}
-
-func (b *TokenBuilder) Server(v string) *TokenBuilder {
-	b.server = &v
-	return b
-}
-
-func (b *TokenBuilder) Port(v uint) *TokenBuilder {
-	b.port = &v
-	return b
-}
-
-func (b *TokenBuilder) Client(v string) *TokenBuilder {
-	b.client = &v
-	return b
-}
-
-func (b *TokenBuilder) Password(v string) *TokenBuilder {
-	b.password = &v
-	return b
-}
-
-func (b *TokenBuilder) Realm(v string) *TokenBuilder {
-	b.realm = &v
-	return b
-}
-
-func (b *TokenBuilder) TokenReceiver(v TokenReceiver) *TokenBuilder {
-	b.tokenReceiver = &v
-	return b
-}
-
-func (b *TokenBuilder) Build() (Token, error) {
-	var ret Token
-	if b.server != nil {
-		ret.Server = *b.server
-	} else {
-		return ret, errors.New("server isn't set")
-	}
-	if b.port != nil {
-		ret.Port = *b.port
-	} else {
-		return ret, errors.New("port isn't set")
-	}
-	if b.client != nil {
-		ret.Client = *b.client
-	} else {
-		return ret, errors.New("client isn't set")
-	}
-	if b.password != nil {
-		ret.Password = *b.password
-	} else {
-		return ret, errors.New("password isn't set")
-	}
-	if b.realm != nil {
-		ret.Realm = *b.realm
-	} else {
-		return ret, errors.New("realm isn't set")
-	}
-	if b.tokenReceiver != nil {
-		ret.TokenReceiver = *b.tokenReceiver
-		tokenReceiverChan := make(chan TokenReceiverPayload)
-		connectionString, err := ret.TokenReceiver.BuildConnectionString(ret.Server, ret.Port, ret.Realm, ret.Client)
-		if err != nil {
-			return ret, fmt.Errorf("error while building connection string: %v", err)
-		}
-		ret.connectionStr = connectionString
-		go ret.TokenReceiver.Get(connectionString, ret.Client, ret.Password, tokenReceiverChan)
-		timeout := 10 * time.Second
-		select {
-		case payload := <-tokenReceiverChan:
-			if payload.HasError {
-				return ret, errors.New(payload.Error)
-			} else {
-				ret.InitContent(payload)
-				go refreshToken(&ret)
-			}
-		case <-time.After(timeout):
-			return ret, errors.New("timeout while receiving the first token")
-		}
-	} else {
-		return ret, errors.New("token receiver isn't set")
-	}
-
-	return ret, nil
 }

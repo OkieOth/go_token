@@ -10,22 +10,19 @@ import (
 
 func main() {
 	tokenReceiver := token.NewHttpTokenReceiver()
-	if token, err := token.NewTokenBuilder().
-		Server("localhost").
-		Port(8080).
-		Realm("test-realm").
-		Client("test-client").
-		Password("test-client999").
-		TokenReceiver(&tokenReceiver).
-		Build(); err != nil {
+	if token, err := token.NewToken(
+		token.Realm("test-realm"),
+		token.Client("test-client"),
+		token.Password("test-client999"),
+		token.Receiver(&tokenReceiver)); err != nil {
 		panic(fmt.Sprintf("Error while create token object: %v", err))
 	} else {
 		// do something useful with the token
-		getAndPrintToken(&token)
+		getAndPrintToken(token)
 		for {
 			fmt.Println("sleep for 30s ... |-) ... ")
 			time.Sleep(time.Second * 30)
-			getAndPrintToken(&token)
+			getAndPrintToken(token)
 		}
 	}
 }
