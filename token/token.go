@@ -3,6 +3,7 @@ package token
 import (
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 )
@@ -12,7 +13,6 @@ type TokenContent struct {
 	token            string
 	ExirationSeconds uint64
 	LastUpdated      *time.Time
-	LastChecked      *time.Time
 }
 
 func (c *TokenContent) GetToken() string {
@@ -53,6 +53,8 @@ type Token struct {
 	Password string
 	Realm    string
 
+	connectionStr string
+
 	Content       *TokenContent
 	TokenReceiver TokenReceiver
 }
@@ -65,16 +67,53 @@ func (t *Token) Get() (string, error) {
 	}
 }
 
+func refreshToken(t *Token) {
+	const EXPIRATION_OFFSET = 5
+	const MAX_RETRY_SECS = 60
+	currentRetrySecs := 1
+	for {
+		expirationSecs := t.Content.ExirationSeconds
+		if expirationSecs > EXPIRATION_OFFSET {
+			time.Sleep(time.Second * time.Duration(t.Content.ExirationSeconds-EXPIRATION_OFFSET))
+		} else {
+			time.Sleep(time.Second * time.Duration(currentRetrySecs))
+			if currentRetrySecs < MAX_RETRY_SECS {
+				currentRetrySecs = currentRetrySecs * 2
+			}
+		}
+		tokenReceiverChan := make(chan TokenReceiverPayload)
+		go t.TokenReceiver.Get(t.connectionStr, t.Client, t.Password, tokenReceiverChan)
+		timeout := 10 * time.Second
+		select {
+		case payload := <-tokenReceiverChan:
+			if payload.HasError {
+				// TODO Logging
+				log.Printf("error while retrieving token: %v", payload.Error)
+				t.Content.ExirationSeconds = 0
+			} else {
+				log.Println("retrieved new token")
+				if t.Content != nil {
+					t.Content.SetToken(payload.TokenStr)
+					lastUpdated := time.Now()
+					t.Content.LastUpdated = &lastUpdated
+					currentRetrySecs = 1
+				} else {
+					t.InitContent(payload)
+				}
+				log.Println("updated token")
+			}
+		case <-time.After(timeout):
+			log.Println("timeout while trying to refresh token")
+			t.Content.ExirationSeconds = 0
+		}
+	}
+}
+
 func (t *Token) InitContent(payload TokenReceiverPayload) {
 	var content TokenContent
 	content.ExirationSeconds = payload.ExpirationSeconds
 	content.SetToken(payload.TokenStr)
 	t.Content = &content
-	go func() {
-
-	}()
-	// TODO - initialize Token object
-	// start go routine to refresh the token
 }
 
 func NewTokenBuilder() *TokenBuilder {
@@ -156,6 +195,7 @@ func (b *TokenBuilder) Build() (Token, error) {
 		if err != nil {
 			return ret, fmt.Errorf("error while building connection string: %v", err)
 		}
+		ret.connectionStr = connectionString
 		go ret.TokenReceiver.Get(connectionString, ret.Client, ret.Password, tokenReceiverChan)
 		timeout := 10 * time.Second
 		select {
@@ -164,6 +204,7 @@ func (b *TokenBuilder) Build() (Token, error) {
 				return ret, errors.New(payload.Error)
 			} else {
 				ret.InitContent(payload)
+				go refreshToken(&ret)
 			}
 		case <-time.After(timeout):
 			return ret, errors.New("timeout while receiving the first token")
