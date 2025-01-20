@@ -1,0 +1,41 @@
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: secretpassword
+      DB_VENDOR: h2
+    command:
+      - start-dev
+      - --import-realm
+      - --log=file
+    volumes:
+      - ./keycloak/import.json:/opt/keycloak/data/import/import.json
+    healthcheck:
+      test: ["CMD-SHELL", "cat /opt/keycloak/data/log/keycloak.log | grep -q 'DO NOT use this configuration in production'"]
+      interval: 5s
+      timeout: 1s
+      retries: 100
+    networks:
+      - test_network
+
+  test_runner:
+    build:
+      context: ..
+      args:
+        DOCKER_BUILDKIT: 1
+      dockerfile: Dockerfile.testrunner
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    environment:
+      - KEYCLOAK_HOST=keycloak
+
+
+volumes:
+  keycloak_data:
+    driver: local
+
+networks:
+  test_network:
+    driver: bridge
